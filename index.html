@@ -1,0 +1,1862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursor Combat (Part 1/40)</title>
+    <style>
+        /* --- Nostalgic Windows 95 System Styles --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #008080; /* Win95 Teal Desktop */
+            font-family: 'Tahoma', sans-serif;
+        }
+        #desktop {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        /* --- Retro Bottom Taskbar Layout --- */
+        #taskbar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 38px;
+            background-color: #c0c0c0;
+            border-top: 2px solid #ffffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 10px;
+            z-index: 100;
+            box-shadow: inset 0 1px 0 #dfdfdf;
+        }
+        #start-button {
+            background-color: #c0c0c0;
+            border: 2px solid;
+            border-color: #ffffff #808080 #808080 #ffffff;
+            padding: 2px 12px;
+            font-weight: bold;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        #system-tray {
+            background-color: #c0c0c0;
+            border: 2px solid;
+            border-color: #808080 #ffffff #ffffff #808080;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-family: monospace;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="desktop">
+        <!-- Main Graphics Canvas Rendering Field -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- System Taskbar Footer -->
+        <div id="taskbar">
+            <div id="start-button">☣️ Start</div>
+            <div id="system-tray">
+                <span id="fps-counter">FPS: 60</span> | <span id="game-timer">00:00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- --- Part 1 Engine Script Core --- -->
+    <script>
+        (function() {
+            const CONFIG = Object.freeze({ TICK_RATE: 1000 / 60 });
+            
+            // Central Game State Container
+            let state = {
+                mode: 'BOOT', // BOOT, LIVE, CRASH
+                timeElapsed: 0
+            };
+
+            // Global Hooks for external micro-parts to read/write state
+            window.getGameState = function() { return state; };
+            window.setGameState = function(updaterFn) { state = updaterFn(state); };
+
+            // Pure arrays to collect pipeline hooks from upcoming parts
+            window.engineUpdateHooks = [];
+            window.engineRenderHooks = [];
+            window.engineDomHooks = [];
+
+            let loopData = { lastTimestamp: 0, accumulatedTime: 0, currentFps: 60 };
+
+            // Core Fixed-Timestep Logic Step
+            function update(deltaTime) {
+                if (state.mode !== 'LIVE') return;
+                state.timeElapsed += deltaTime;
+
+                // Fire all modular update hooks registered by upcoming parts
+                window.engineUpdateHooks.forEach(function(hook) {
+                    hook(deltaTime);
+                });
+            }
+
+            // Core Visual Rendering Step
+            function render(canvas, ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (state.mode === 'BOOT') {
+                    ctx.fillStyle = 'rgba(12, 18, 28, 0.95)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#00ff55';
+                    ctx.font = 'bold 26px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('>> CURSOR COMBAT <<', canvas.width / 2, canvas.height / 2 - 10);
+                    ctx.fillStyle = '#00aaff';
+                    ctx.font = '12px monospace';
+                    ctx.fillText('[ CLICK WORKSPACE TO INITIALIZE SYSTEM ]', canvas.width / 2, canvas.height / 2 + 25);
+                }
+
+                if (state.mode === 'LIVE') {
+                    // Fire all modular canvas rendering hooks registered by upcoming parts
+                    window.engineRenderHooks.forEach(function(hook) {
+                        hook(ctx, canvas.width, canvas.height);
+                    });
+                }
+            }
+
+            // Core DOM Refresh Step
+            function syncDOM() {
+                const minutes = Math.floor(state.timeElapsed / 60).toString().padStart(2, '0');
+                const seconds = Math.floor(state.timeElapsed % 60).toString().padStart(2, '0');
+                document.getElementById('fps-counter').textContent = `FPS: ${loopData.currentFps}`;
+                document.getElementById('game-timer').textContent = `${minutes}:${seconds}`;
+
+                // Fire all modular DOM text updates registered by upcoming parts
+                window.engineDomHooks.forEach(function(hook) {
+                    hook(state, loopData.currentFps);
+                });
+            }
+
+            window.addEventListener('DOMContentLoaded', function() {
+                const canvas = document.getElementById('gameCanvas');
+                const ctx = canvas.getContext('2d');
+
+                function resize() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                    ctx.imageSmoothingEnabled = false;
+                }
+                window.addEventListener('resize', resize);
+                resize();
+
+                function mainLoop(timestamp) {
+                    if (!loopData.lastTimestamp) loopData.lastTimestamp = timestamp;
+                    let delta = timestamp - loopData.lastTimestamp;
+                    loopData.lastTimestamp = timestamp;
+                    loopData.accumulatedTime += delta;
+                    loopData.currentFps = Math.round(1000 / delta) || 60;
+
+                    while (loopData.accumulatedTime >= CONFIG.TICK_RATE) {
+                        update(CONFIG.TICK_RATE / 1000);
+                        loopData.accumulatedTime -= CONFIG.TICK_RATE;
+                    }
+
+                    render(canvas, ctx);
+                    syncDOM();
+                    requestAnimationFrame(mainLoop);
+                }
+
+                window.addEventListener('mousedown', function() {
+                    if (state.mode === 'BOOT') {
+                        state.mode = 'LIVE';
+                    }
+                });
+
+                requestAnimationFrame(mainLoop);
+            });
+        })();
+    </script>
+<!-- --- Part 2: Scoreboard & System Integrity HUD Overlays Module --- -->
+<div id="ui-layer" style="position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; z-index: 50; pointer-events: none;">
+    <!-- Performance Score Panel -->
+    <div id="score-board" style="background-color: #c0c0c0; border: 2px solid; border-color: #ffffff #808080 #808080 #ffffff; padding: 6px 14px; font-family: monospace; font-size: 18px; font-weight: bold; color: #000000; box-shadow: 2px 2px 6px rgba(0,0,0,0.3);">
+        SYS_SCORE: <span id="score-value" style="color: #000080;">00000</span>
+    </div>
+    
+    <!-- System Integrity Status Bar -->
+    <div id="integrity-panel" style="background-color: #c0c0c0; border: 2px solid; border-color: #ffffff #808080 #808080 #ffffff; padding: 6px; width: 220px; box-shadow: 2px 2px 6px rgba(0,0,0,0.3);">
+        <div class="panel-title" style="font-size: 10px; font-weight: bold; color: #ffffff; background: linear-gradient(90deg, #000080, #1084d0); padding: 2px 5px; margin-bottom: 4px; letter-spacing: 0.5px; font-family: sans-serif;">INTEGRITY.EXE</div>
+        <div id="health-box" style="width: 100%; height: 16px; background-color: #ffffff; border: 1px solid #808080; position: relative; overflow: hidden;">
+            <div id="health-fill" style="width: 100%; height: 100%; background-color: #00ff00; transition: width 0.05s linear;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    // Inject the new score and health properties directly into the live state context [3]
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                score: 0,
+                health: 100
+            };
+        });
+    }
+
+    // Register a DOM hook to automatically handle scoreboard text and health color alterations
+    if (window.engineDomHooks) {
+        window.engineDomHooks.push(function(state) {
+            const scoreElement = document.getElementById('score-value');
+            const fillElement = document.getElementById('health-fill');
+
+            if (scoreElement && typeof state.score !== 'undefined') {
+                scoreElement.textContent = state.score.toString().padStart(5, '0');
+            }
+
+            if (fillElement && typeof state.health !== 'undefined') {
+                fillElement.style.width = state.health + '%';
+                
+                // Functional palette swapping based on threat warning conditions
+                if (state.health < 35) {
+                    fillElement.style.backgroundColor = '#ff0000'; // Danger Warning Red
+                } else if (state.health < 65) {
+                    fillElement.style.backgroundColor = '#ffff00'; // System Warning Yellow
+                } else {
+                    fillElement.style.backgroundColor = '#00ff00'; // Safe Baseline Green
+                }
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 3: Retro OS Vector Grid Background Module --- -->
+<script>
+(function() {
+    const GRID_SIZE = 60; // Spacing interval for drawing background vector grid blocks
+
+    // Register a rendering callback hook with our central global event bus
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)'; // Subtle desktop line visibility
+            ctx.lineWidth = 1;
+
+            // Draw clean vertical systemic grid partitions
+            for (let x = 0; x < width; x += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+
+            // Draw clean horizontal systemic grid partitions
+            for (let y = 0; y < height; y += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 4: Mouse Vector Tracking Subsystem Module --- -->
+<script>
+(function() {
+    // Inject custom mouse data coordinates securely into the main state register
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                mouse: { x: 0, y: 0, lastX: 0, lastY: 0, speed: 0, isDown: false }
+            };
+        });
+    }
+
+    // Capture precise window pointer placement data
+    window.addEventListener('mousemove', function(event) {
+        if (window.setGameState) {
+            window.setGameState(function(state) {
+                if (!state.mouse) return state;
+                return {
+                    ...state,
+                    mouse: {
+                        ...state.mouse,
+                        x: event.clientX,
+                        y: event.clientY
+                    }
+                };
+            });
+        }
+    });
+
+    // Capture standard system press indicators
+    window.addEventListener('mousedown', function() {
+        if (window.setGameState) {
+            window.setGameState(function(state) {
+                if (!state.mouse) return state;
+                return {
+                    ...state,
+                    mouse: { ...state.mouse, isDown: true }
+                };
+            });
+        }
+    });
+
+    // Capture normal system liftoff indicators
+    window.addEventListener('mouseup', function() {
+        if (window.setGameState) {
+            window.setGameState(function(state) {
+                if (!state.mouse) return state;
+                return {
+                    ...state,
+                    mouse: { ...state.mouse, isDown: false }
+                };
+            });
+        }
+    });
+
+    // Hook calculations straight into the central continuous frame updater bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (!state.mouse) return state;
+
+                    // Compute absolute pixel movement distance since previous clock frame
+                    var deltaX = state.mouse.x - state.mouse.lastX;
+                    var deltaY = state.mouse.y - state.mouse.lastY;
+                    var calculatedVelocity = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                    return {
+                        ...state,
+                        mouse: {
+                            ...state.mouse,
+                            lastX: state.mouse.x,
+                            lastY: state.mouse.lastY = state.mouse.y,
+                            speed: calculatedVelocity
+                        }
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 5: Reactive Laser Targeting Reticle Module --- -->
+<script>
+(function() {
+    // Register our drawing instructions to the main visual frame bus
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            // Fetch live cursor coordinates from our global state
+            var state = window.getGameState();
+            if (!state || !state.mouse) return;
+
+            var mouse = state.mouse;
+            // Base ring grows when swiping quickly, tightly locks when clicked down
+            var baseRadius = mouse.isDown ? 10 : 15 + Math.min(mouse.speed * 0.12, 16);
+            
+            ctx.lineWidth = mouse.isDown ? 3 : 1.5;
+            ctx.strokeStyle = mouse.isDown ? '#ff0055' : '#00ff55'; // Vibrant pink on click, neon green default
+
+            // 1. Draw Outer Targeting Ring
+            ctx.beginPath();
+            ctx.arc(mouse.x, mouse.y, baseRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 2. Draw Core Locking Center Dot
+            ctx.fillStyle = mouse.isDown ? '#ffffff' : '#00ff55';
+            ctx.beginPath();
+            ctx.arc(mouse.x, mouse.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 3. Draw Four Precision Vector Ticks
+            ctx.beginPath();
+            // Left Tick
+            ctx.moveTo(mouse.x - baseRadius - 5, mouse.y); ctx.lineTo(mouse.x - baseRadius, mouse.y);
+            // Right Tick
+            ctx.moveTo(mouse.x + baseRadius, mouse.y); ctx.lineTo(mouse.x + baseRadius + 5, mouse.y);
+            // Top Tick
+            ctx.moveTo(mouse.x, mouse.y - baseRadius - 5); ctx.lineTo(mouse.x, mouse.y - baseRadius);
+            // Bottom Tick
+            ctx.moveTo(mouse.x, mouse.y + baseRadius); ctx.lineTo(mouse.x, mouse.y + baseRadius + 5);
+            ctx.stroke();
+
+            // 4. Draw Full Screen Perimeter Scanlines (only when cursor is idle and unclicked)
+            if (!mouse.isDown && mouse.speed < 1) {
+                ctx.strokeStyle = 'rgba(0, 255, 85, 0.12)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                // Horizontal tracking ray
+                ctx.moveTo(0, mouse.y); ctx.lineTo(width, mouse.y);
+                // Vertical tracking ray
+                ctx.moveTo(mouse.x, 0); ctx.lineTo(mouse.x, height);
+                ctx.stroke();
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 6: Pointer Ghost Trail & Motion Blur Dust Module --- -->
+<script>
+(function() {
+    var MAX_ECHOES = 8;        // Number of retro cursor shadow duplicates
+    var MAX_SPARKS = 40;       // Safety ceiling for floating digital fragments
+
+    // Inject dedicated trail storage arrays safely into our system state
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                cursorEchoes: [],
+                motionSparks: []
+            };
+        });
+    }
+
+    // Hook tracking calculations directly into the continuous logic clock loop
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (!state.mouse || !state.cursorEchoes || !state.motionSparks) return state;
+
+                    // 1. Maintain Historical Array Log for Cursor Trail Copies
+                    var nextEchoes = state.cursorEchoes.slice();
+                    nextEchoes.push({ x: state.mouse.x, y: state.mouse.y });
+                    if (nextEchoes.length > MAX_ECHOES) {
+                        nextEchoes.shift();
+                    }
+
+                    // 2. Physics Step: Move existing sparks, fade opacity down over time
+                    var nextSparks = state.motionSparks.map(function(s) {
+                        return {
+                            ...s,
+                            x: s.x + s.vx * deltaTime,
+                            y: s.y + s.vy * deltaTime,
+                            alpha: s.alpha - s.decay * deltaTime
+                        };
+                    }).filter(function(s) {
+                        return s.alpha > 0; // Destroy dead particles
+                    });
+
+                    // 3. Dynamic Generator: Spawn dust trail chunks if pointer sweeps fast
+                    if (state.mouse.speed > 8 && nextSparks.length < MAX_SPARKS) {
+                        nextSparks.push({
+                            x: state.mouse.x,
+                            y: state.mouse.y,
+                            vx: (Math.random() - 0.5) * 60,
+                            vy: (Math.random() - 0.5) * 60,
+                            size: Math.random() * 2.5 + 1,
+                            alpha: 1.0,
+                            decay: Math.random() * 1.5 + 1.0,
+                            color: state.mouse.isDown ? '#ff0055' : '#00ff55'
+                        });
+                    }
+
+                    return {
+                        ...state,
+                        cursorEchoes: nextEchoes,
+                        motionSparks: nextSparks
+                    };
+                });
+            }
+        });
+    }
+
+    // Hook the trail painter rules directly into the central rendering loop
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState();
+            if (!state) return;
+
+            // Render old-school classic OS tracking pointer ghost trails
+            if (state.cursorEchoes) {
+                state.cursorEchoes.forEach(function(pos, index) {
+                    // Gradual fade out based on historical age index
+                    var opacity = (index + 1) / (state.cursorEchoes.length + 1) * 0.22;
+                    ctx.fillStyle = state.mouse && state.mouse.isDown ? 'rgba(255, 0, 85, ' + opacity + ')' : 'rgba(0, 255, 85, ' + opacity + ')';
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(pos.x, pos.y);
+                    ctx.lineTo(pos.x + 9, pos.y + 9);
+                    ctx.lineTo(pos.x + 3, pos.y + 10);
+                    ctx.closePath();
+                    ctx.fill();
+                });
+            }
+
+            // Render active digital dust motion debris particles
+            if (state.motionSparks) {
+                state.motionSparks.forEach(function(spark) {
+                    ctx.fillStyle = spark.color;
+                    ctx.globalAlpha = spark.alpha;
+                    ctx.fillRect(spark.x, spark.y, spark.size, spark.size);
+                });
+                ctx.globalAlpha = 1.0; // Restore shared global alpha baseline
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 7: Ammunition Subsystem & Laser Fire Vector Module --- -->
+<script>
+(function() {
+    var LASER_SPEED = 950; // Velocity constant for traveling laser pulses (pixels per second)
+
+    // Inject our active projectile database safely into the system state context
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                lasers: []
+            };
+        });
+    }
+
+    // Intercept mouse clicks to compute cardinal vector angles and discharge ammo
+    window.addEventListener('mousedown', function(event) {
+        var state = window.getGameState();
+        if (!state || state.mode !== 'LIVE') return;
+
+        // Generate a 4-direction structural blast matrix (0, 90, 180, 270 degrees)
+        var angles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+        var freshLasers = angles.map(function(angle) {
+            return {
+                x: event.clientX,
+                y: event.clientY,
+                vx: Math.cos(angle) * LASER_SPEED,
+                vy: Math.sin(angle) * LASER_SPEED
+            };
+        });
+
+        // Push a burst spark flash into our existing Part 6 particle pool if available
+        var clickExplosion = Array.from({ length: 8 }).map(function() {
+            return {
+                x: event.clientX,
+                y: event.clientY,
+                vx: (Math.random() - 0.5) * 240,
+                vy: (Math.random() - 0.5) * 240,
+                size: Math.random() * 3 + 2,
+                alpha: 1.0,
+                decay: Math.random() * 2.0 + 2.0,
+                color: '#00ffff' // High-energy cyan discharge spark
+            };
+        });
+
+        if (window.setGameState) {
+            window.setGameState(function(currentState) {
+                var currentLasers = currentState.lasers || [];
+                var currentSparks = currentState.motionSparks || [];
+                return {
+                    ...currentState,
+                    lasers: currentLasers.concat(freshLasers),
+                    motionSparks: currentSparks.concat(clickExplosion)
+                };
+            });
+        }
+    });
+
+    // Hook projectile translation tracking into the constant logic frame clock loop
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (!state.lasers) return state;
+
+                    // Advance laser coordinate positions using current velocity vectors
+                    var filteredLasers = state.lasers.map(function(p) {
+                        return {
+                            ...p,
+                            x: p.x + p.vx * deltaTime,
+                            y: p.y + p.vy * deltaTime
+                        };
+                    }).filter(function(p) {
+                        // Purge lasers that travel outside our active screen boundary pixels
+                        return p.x >= 0 && p.x <= window.innerWidth && p.y >= 0 && p.y <= window.innerHeight;
+                    });
+
+                    return {
+                        ...state,
+                        lasers: filteredLasers
+                    };
+                });
+            }
+        });
+    }
+
+    // Hook laser vector painters into the central graphic render loop pipeline
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState();
+            if (!state || !state.lasers) return;
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#00ffff'; // Neon cyan ray line
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#00ffff'; // Glistening high-tech bloom filter
+
+            state.lasers.forEach(function(laser) {
+                ctx.beginPath();
+                // Draw trailing laser paths using scaled historical directional velocity
+                ctx.moveTo(laser.x - laser.vx * 0.015, laser.y - laser.vy * 0.015);
+                ctx.lineTo(laser.x, laser.y);
+                ctx.stroke();
+            });
+
+            // Always turn off bloom filter states immediately to safeguard browser engine frames
+            ctx.shadowBlur = 0;
+        });
+    }
+})();
+</script>
+<!-- --- Part 8: Pop-up Window Entity Spawner Subsystem Module --- -->
+<script>
+(function() {
+    var WINDOW_SPAWN_RATE = 2.5; // Spawn a new pop-up error every 2.5 seconds
+    var ERROR_TITLES = [
+        "Warning: Spyware Detected",
+        "Fatal Alert: 0x80070002",
+        "Registry Error!",
+        "Update Required Immediately",
+        "Click to Win Free Prize!",
+        "System Threat Warning"
+    ];
+
+    // Initialize our core popup object repository safely inside system memory
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                popups: [],
+                spawnTimer: 0
+            };
+        });
+    }
+
+    // Hook pop-up tracking mathematics straight into the system logic update loop
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (state.mode !== 'LIVE' || typeof state.popups === 'undefined') return state;
+
+                    var updatedPopups = state.popups.slice();
+                    var nextSpawnTimer = state.spawnTimer + deltaTime;
+
+                    // Time-delta condition listener to generate structured pop-up objects
+                    if (nextSpawnTimer >= WINDOW_SPAWN_RATE) {
+                        nextSpawnTimer = 0; // Reset spawn interval clock ticker
+
+                        // Determine randomized dimensional scales mimicking standard desktop dialogs
+                        var popWidth = Math.floor(Math.random() * 80) + 160;
+                        var popHeight = Math.floor(Math.random() * 60) + 110;
+                        
+                        // Pick random coordinate vectors while keeping boundaries cleanly inside screen pixels
+                        var randomX = Math.random() * (window.innerWidth - popWidth);
+                        var randomY = Math.random() * (window.innerHeight - popHeight - 40);
+                        
+                        // Select a random nostalgic clickbait error string
+                        var randomTitle = ERROR_TITLES[Math.floor(Math.random() * ERROR_TITLES.length)];
+
+                        // Push structural object blueprint configuration parameters
+                        updatedPopups.push({
+                            id: Date.now() + Math.random(),
+                            x: randomX,
+                            y: randomY,
+                            w: popWidth,
+                            h: popHeight,
+                            title: randomTitle,
+                            speed: Math.random() * 30 + 15, // Drift velocity constant
+                            angle: Math.random() * Math.PI * 2 // Drift heading vector direction
+                        });
+                    }
+
+                    // Physics Step: Apply basic drifting vector translation to all active pop-ups
+                    updatedPopups = updatedPopups.map(function(popup) {
+                        var nextX = popup.x + Math.cos(popup.angle) * popup.speed * deltaTime;
+                        var nextY = popup.y + Math.sin(popup.angle) * popup.speed * deltaTime;
+
+                        // Desktop border collision bouncing mechanics
+                        var nextAngle = popup.angle;
+                        if (nextX < 0 || nextX + popup.w > window.innerWidth) {
+                            nextAngle = Math.PI - nextAngle;
+                        }
+                        if (nextY < 0 || nextY + popup.h > window.innerHeight - 40) {
+                            nextAngle = -nextAngle;
+                        }
+
+                        return {
+                            ...popup,
+                            x: Math.max(0, Math.min(window.innerWidth - popup.w, nextX)),
+                            y: Math.max(0, Math.min(window.innerHeight - popup.h - 40, nextY)),
+                            angle: nextAngle
+                        };
+                    });
+
+                    return {
+                        ...state,
+                        popups: updatedPopups,
+                        spawnTimer: nextSpawnTimer
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 9: Nostalgic Pop-up UI Graphic Rendering Module --- -->
+<script>
+(function() {
+    // Hook our classic canvas layout rendering routines onto the global graphics frame bus
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState();
+            if (!state || !state.popups) return;
+
+            // Iterate through every active pop-up entry currently tracked inside system storage
+            state.popups.forEach(function(win) {
+                // 1. Draw Outer Retro Drop Shadow Bevel Block
+                ctx.fillStyle = "#808080"; // Outer shadow drop tint
+                ctx.fillRect(win.x + 3, win.y + 3, win.w, win.h);
+
+                // 2. Draw Main Dialogue Window Body Background
+                ctx.fillStyle = "#c0c0c0"; // Classic slate grey face color
+                ctx.fillRect(win.x, win.y, win.w, win.h);
+
+                // 3. Draw Standard Highlight Bevel Grid Lines (3D Window look)
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(win.x, win.y + win.h); ctx.lineTo(win.x, win.y); ctx.lineTo(win.x + win.w, win.y);
+                ctx.stroke();
+
+                ctx.strokeStyle = "#000000";
+                ctx.beginPath();
+                ctx.moveTo(win.x, win.y + win.h); ctx.lineTo(win.x + win.w, win.y + win.h); ctx.lineTo(win.x + win.w, win.y);
+                ctx.stroke();
+
+                // 4. Paint Classic Blue System Title Bar Label Field
+                var titleHeight = 18;
+                ctx.fillStyle = "linear-gradient(90deg, #000080, #1084d0)";
+                // Fallback direct rectangle injection if canvas gradients reduce FPS values
+                ctx.fillStyle = "#000080"; 
+                ctx.fillRect(win.x + 3, win.y + 3, win.w - 6, titleHeight);
+
+                // 5. Draw Alert Dialog Label String Text
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 10px Tahoma, Arial, sans-serif";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "middle";
+                // Enforce string cutting threshold boundaries to handle overflow panel errors
+                var shortTitle = win.title;
+                if (shortTitle.length > 24) {
+                    shortTitle = shortTitle.substring(0, 21) + "...";
+                }
+                ctx.fillText(shortTitle, win.x + 8, win.y + 3 + (titleHeight / 2));
+
+                // 6. Paint Red Decorative Close Box Rect ("X" Indicator Area)
+                var btnSize = 12;
+                var btnX = win.x + win.w - btnSize - 5;
+                var btnY = win.y + 3 + ((titleHeight - btnSize) / 2);
+                
+                ctx.fillStyle = "#ff0000"; // Aggressive warning alert close marker
+                ctx.fillRect(btnX, btnY, btnSize, btnSize);
+                
+                // Draw white cross "X" inside button footprint bounds
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(btnX + 3, btnY + 3); ctx.lineTo(btnX + btnSize - 3, btnY + btnSize - 3);
+                ctx.moveTo(btnX + btnSize - 3, btnY + 3); ctx.lineTo(btnX + 3, btnY + btnSize - 3);
+                ctx.stroke();
+
+                // 7. Paint Mock Central Body Alert Warning Graphic (Dreaded "X" circle emblem)
+                var centerX = win.x + 25;
+                var centerY = win.y + titleHeight + ((win.h - titleHeight) / 2);
+                
+                ctx.fillStyle = "#cc0000";
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(centerX - 3, centerY - 3); ctx.lineTo(centerX + 3, centerY + 3);
+                ctx.moveTo(centerX + 3, centerY - 3); ctx.lineTo(centerX - 3, centerY + 3);
+                ctx.stroke();
+
+                // 8. Draw Placeholder Dialog Text Lines
+                ctx.fillStyle = "#000000";
+                ctx.font = "11px Tahoma, Arial, sans-serif";
+                ctx.textAlign = "left";
+                ctx.fillText("An unexpected error has", win.x + 42, centerY - 5);
+                ctx.fillText("threatened safety layers.", win.x + 42, centerY + 7);
+            });
+        });
+    }
+})();
+</script>
+<!-- --- Part 10: Laser-to-Popup Collision & Hit Registration Module --- -->
+<script>
+(function() {
+    // Hook our hit detection calculations straight into the central logic frame bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Safety check to ensure all connected arrays are completely initialized
+                    if (!state.lasers || !state.popups) return state;
+
+                    var nextLasers = state.lasers.slice();
+                    var nextPopups = state.popups.slice();
+                    var currentSparks = state.motionSparks || [];
+                    var pointsEarned = 0;
+                    
+                    var lasersToPurge = {};
+                    var popupsToPurge = {};
+
+                    // Double logic matrix layer: Evaluate intersection bounding indices
+                    for (var l = 0; l < nextLasers.length; l++) {
+                        var laser = nextLasers[l];
+                        
+                        for (var p = 0; p < nextPopups.length; p++) {
+                            var popup = nextPopups[p];
+
+                            // Check bounding box intersection: Does the laser point overlap the window footprint?
+                            if (laser.x >= popup.x && laser.x <= popup.x + popup.w &&
+                                laser.y >= popup.y && laser.y <= popup.y + popup.h) {
+                                
+                                // Tag items for dynamic deletion from state
+                                lasersToPurge[l] = true;
+                                popupsToPurge[popup.id] = true;
+                                pointsEarned += 100; // Award 100 points per window destroyed
+
+                                // Generate a high-velocity particle explosion at the deletion coordinates
+                                for (var i = 0; i < 12; i++) {
+                                    currentSparks.push({
+                                        x: laser.x,
+                                        y: laser.y,
+                                        vx: (Math.random() - 0.5) * 320,
+                                        vy: (Math.random() - 0.5) * 320,
+                                        size: Math.random() * 4 + 1.5,
+                                        alpha: 1.0,
+                                        decay: Math.random() * 2.5 + 2.0,
+                                        color: '#ffcc00' // Golden deletion shock particles
+                                    });
+                                }
+                                
+                                break; // Laser consumed; break inner collision checks
+                            }
+                        }
+                    }
+
+                    // Pure structural filtering vectors
+                    var filteredLasers = nextLasers.filter(function(_, idx) { return !lasersToPurge[idx]; });
+                    var filteredPopups = nextPopups.filter(function(popup) { return !popupsToPurge[popup.id]; });
+
+                    return {
+                        ...state,
+                        lasers: filteredLasers,
+                        popups: filteredPopups,
+                        motionSparks: currentSparks,
+                        score: typeof state.score !== 'undefined' ? state.score + pointsEarned : pointsEarned
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 11: Popup Pointer Proximity & Threat Damage Module --- -->
+<script>
+(function() {
+    var DAMAGE_PER_FRAME_TICK = 18; // Amount of integrity percentage lost per second of active window contact
+
+    // Hook threat collision metrics directly into the continuous engine update bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Check if workspace lists, current pointer positions, and vitality pools exist
+                    if (!state.popups || !state.mouse || typeof state.health === 'undefined' || state.mode !== 'LIVE') return state;
+
+                    var mouse = state.mouse;
+                    var currentSparks = state.motionSparks || [];
+                    var damageAccumulated = 0;
+                    var contactDetected = false;
+
+                    // Evaluate window footprint intersections with the precise cursor point
+                    for (var i = 0; i < state.popups.length; i++) {
+                        var popup = state.popups[i];
+
+                        // Does the pointer tip coordinate lie inside the bounding bounds of this window panel?
+                        if (mouse.x >= popup.x && mouse.x <= popup.x + popup.w &&
+                            mouse.y >= popup.y && mouse.y <= popup.y + popup.h) {
+                            
+                            contactDetected = true;
+                            damageAccumulated += DAMAGE_PER_FRAME_TICK * deltaTime;
+                        }
+                    }
+
+                    // If a threat touches the pointer, lower health metrics and trigger alert flares
+                    var nextHealth = state.health;
+                    var nextMode = state.mode;
+
+                    if (contactDetected) {
+                        nextHealth = Math.max(0, state.health - damageAccumulated);
+                        
+                        // If system resources are drained, drop system state into a blue screen crash
+                        if (nextHealth <= 0) {
+                            nextMode = 'CRASH';
+                        }
+
+                        // Generate dangerous crimson fragment spikes shooting out from the crosshair vector
+                        if (Math.random() < 0.35) {
+                            currentSparks.push({
+                                x: mouse.x,
+                                y: mouse.y,
+                                vx: (Math.random() - 0.5) * 180,
+                                vy: (Math.random() - 0.5) * 180,
+                                size: Math.random() * 3 + 1,
+                                alpha: 1.0,
+                                decay: 3.5,
+                                color: '#ff0000' // Toxic virus red spark alert
+                            });
+                        }
+                    }
+
+                    return {
+                        ...state,
+                        health: nextHealth,
+                        mode: nextMode,
+                        motionSparks: currentSparks
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 12: Web Audio Synthesizer & Nostalgic Sound FX Module --- -->
+<script>
+(function() {
+    var audioCtx = null;
+
+    // Safe lazy-initialization context wrapper to pass strict modern browser security blocks
+    function confirmAudioContext() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        return audioCtx;
+    }
+
+    // Pure Synthesizer Pipeline: Generate Low-Fidelity Square Wave Laser Shots
+    function playRetroLaserSound() {
+        var ctx = confirmAudioContext();
+        if (!ctx) return;
+
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+
+        osc.type = "square"; // Retro 8-bit classic gaming audio signature
+        osc.frequency.setValueAtTime(880, ctx.currentTime); // High starting frequency pitch
+        // Rapid pitch sweep downwards to create laser discharge physics sound
+        osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.15);
+
+        gain.gain.setValueAtTime(0.08, ctx.currentTime); // Maintain comfortable master volume output
+        gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+    }
+
+    // Pure Synthesizer Pipeline: Generate Textured Noise Explosions on Popup Destruction
+    function playRetroExplosionSound() {
+        var ctx = confirmAudioContext();
+        if (!ctx) return;
+
+        var bufferSize = ctx.sampleRate * 0.25; // 1/4 second explosion time interval
+        var buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        var data = buffer.getChannelData(0);
+
+        // Populate sound wave memory sectors with white random audio data noise
+        for (var i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        var noiseNode = ctx.createBufferSource();
+        noiseNode.buffer = buffer;
+
+        // Apply a custom low-pass audio filter to mimic deep physical window crunches
+        var filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(600, ctx.currentTime);
+        filter.frequency.linearRampToValueAtTime(50, ctx.currentTime + 0.25);
+
+        var gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+        noiseNode.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        noiseNode.start();
+        noiseNode.stop(ctx.currentTime + 0.25);
+    }
+
+    // Intercept active pointer fires to inject synthesizer laser feedback calls
+    window.addEventListener('mousedown', function() {
+        var state = window.getGameState ? window.getGameState() : null;
+        if (!state) return;
+
+        if (state.mode === 'LIVE') {
+            playRetroLaserSound();
+        }
+    });
+
+    // Run an isolated background status checker loop to flag state changes for explosions
+    var historicalPopupCount = 0;
+    function checkAudioTriggerPipeline() {
+        var state = window.getGameState ? window.getGameState() : null;
+        if (state && state.mode === 'LIVE' && state.popups) {
+            // If popups decreases, a laser hit occurred inside Part 10 loops
+            if (state.popups.length < historicalPopupCount) {
+                playRetroExplosionSound();
+            }
+            historicalPopupCount = state.popups.length;
+        }
+        requestAnimationFrame(checkAudioTriggerPipeline);
+    }
+    requestAnimationFrame(checkAudioTriggerPipeline);
+})();
+</script>
+<!-- --- Part 13: Closing Browser Tab Enemy Wave Subsystem Module --- -->
+<script>
+(function() {
+    var TAB_SPAWN_RATE = 1.8; // Spawns a fast-moving tab vector every 1.8 seconds
+    var MOTIVATIONAL_URLS = [
+        "localhost:8080/secure_core",
+        "system_panic.dll/virus_scan",
+        "antivirus_pro.net/download",
+        "task_manager.exe/pointer_kill",
+        "system_dump_0x00F12.txt"
+    ];
+
+    // Safely inject our closing tabs repository array into our core memory structures
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                browserTabs: [],
+                tabSpawnTimer: 0
+            };
+        });
+    }
+
+    // Hook browser tab movement translations directly into the physics timeline clock
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (state.mode !== 'LIVE' || typeof state.browserTabs === 'undefined') return state;
+
+                    var updatedTabs = state.browserTabs.slice();
+                    var nextTabTimer = state.tabSpawnTimer + deltaTime;
+
+                    // Wave Generation Logic: Spawn horizontal tab profiles based on time intervals
+                    if (nextTabTimer >= TAB_SPAWN_RATE) {
+                        nextTabTimer = 0; // Clear wave tick interval
+
+                        // Randomize spawn height and choose whether they zoom left-to-right or right-to-left
+                        var spawnFromLeft = Math.random() < 0.5;
+                        var startX = spawnFromLeft ? -140 : window.innerWidth + 20;
+                        var randomY = Math.random() * (window.innerHeight - 120) + 40;
+                        var speedDirection = spawnFromLeft ? 1 : -1;
+                        var randomUrl = MOTIVATIONAL_URLS[Math.floor(Math.random() * MOTIVATIONAL_URLS.length)];
+
+                        updatedTabs.push({
+                            id: "tab_" + Date.now() + Math.random(),
+                            x: startX,
+                            y: randomY,
+                            w: 130,
+                            h: 24,
+                            vx: speedDirection * (Math.random() * 120 + 160), // High horizontal sprint velocity
+                            url: randomUrl,
+                            lifespan: 6.0, // Total remaining lifetime in seconds
+                            maxLife: 6.0
+                        });
+                    }
+
+                    // Physics & Shrinking Step: Translate coordinates horizontally and narrow down bounds
+                    updatedTabs = updatedTabs.map(function(tab) {
+                        var nextLife = tab.lifespan - deltaTime;
+                        // Dynamically scale width downwards to simulate the tab closing over time
+                        var lifeRatio = Math.max(0, nextLife / tab.maxLife);
+                        var dynamicWidth = 40 + (90 * lifeRatio);
+
+                        return {
+                            ...tab,
+                            x: tab.x + tab.vx * deltaTime,
+                            w: dynamicWidth,
+                            lifespan: nextLife
+                        };
+                    }).filter(function(tab) {
+                        // Purge closed tabs or those that run past screen tracking borders
+                        return tab.lifespan > 0 && tab.x > -200 && tab.x < window.innerWidth + 200;
+                    });
+
+                    return {
+                        ...state,
+                        browserTabs: updatedTabs,
+                        tabSpawnTimer: nextTabTimer
+                    };
+                });
+            }
+        });
+    }
+
+    // Hook tab vector layout instructions directly into the global frame render pipeline
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState();
+            if (!state || !state.browserTabs) return;
+
+            // Draw each active tab entry to look exactly like an old-school browser toolbar tab
+            state.browserTabs.forEach(function(tab) {
+                // Outer structural drop outline
+                ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+                ctx.fillRect(tab.x + 2, tab.y + 2, tab.w, tab.h);
+
+                // Main body element face
+                ctx.fillStyle = "#dfdfdf"; // Standard light toolbar grey
+                ctx.fillRect(tab.x, tab.y, tab.w, tab.h);
+
+                // Distinctive sloping top edge bevels for a nostalgic tab look
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(tab.x, tab.y + tab.h);
+                ctx.lineTo(tab.x, tab.y);
+                ctx.lineTo(tab.x + tab.w - 4, tab.y);
+                ctx.stroke();
+
+                ctx.strokeStyle = "#808080";
+                ctx.beginPath();
+                ctx.moveTo(tab.x + tab.w - 4, tab.y);
+                ctx.lineTo(tab.x + tab.w, tab.y + 4);
+                ctx.lineTo(tab.x + tab.w, tab.y + tab.h);
+                ctx.stroke();
+
+                // Paint a small red close icon square inside the tab itself
+                var crossSize = 10;
+                var crossX = tab.x + tab.w - crossSize - 6;
+                var crossY = tab.y + (tab.h - crossSize) / 2;
+                
+                ctx.fillStyle = "rgba(128, 128, 128, 0.15)";
+                ctx.fillRect(crossX, crossY, crossSize, crossSize);
+                ctx.strokeStyle = "#ff3333";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(crossX + 2, crossY + 2); ctx.lineTo(crossX + crossSize - 2, crossY + crossSize - 2);
+                ctx.moveTo(crossX + crossSize - 2, crossY + 2); ctx.lineTo(crossX + 2, crossY + crossSize - 2);
+                ctx.stroke();
+
+                // Render URL string label tags inside the tab bounds
+                ctx.fillStyle = "#333333";
+                ctx.font = "9px monospace";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "middle";
+                
+                var maxLabelChar = Math.floor(tab.w / 7);
+                var visibleUrl = tab.url;
+                if (visibleUrl.length > maxLabelChar) {
+                    visibleUrl = visibleUrl.substring(0, Math.max(3, maxLabelChar - 2)) + "..";
+                }
+                
+                if (tab.w > 30) {
+                    ctx.fillText(visibleUrl, tab.x + 6, tab.y + (tab.h / 2));
+                }
+            });
+        });
+    }
+})();
+</script>
+<!-- --- Part 14: Browser Tab Collision & Hit Registration Module --- -->
+<script>
+(function() {
+    // Hook tab collision updates directly into the continuous logic clock bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Safety check to verify our active laser arrays and tab arrays exist
+                    if (!state.lasers || !state.browserTabs) return state;
+
+                    var nextLasers = state.lasers.slice();
+                    var nextTabs = state.browserTabs.slice();
+                    var currentSparks = state.motionSparks || [];
+                    var bonusPoints = 0;
+
+                    var lasersToKill = {};
+                    var tabsToKill = {};
+
+                    // Matrix analysis layer: Evaluate laser tip indices within moving tab bounding boxes
+                    for (var l = 0; l < nextLasers.length; l++) {
+                        var laser = nextLasers[l];
+
+                        for (var t = 0; t < nextTabs.length; t++) {
+                            var tab = nextTabs[t];
+
+                            // Bounding Intersection Check: Does the laser point overlap the tab rectangle?
+                            if (laser.x >= tab.x && laser.x <= tab.x + tab.w &&
+                                laser.y >= tab.y && laser.y <= tab.y + tab.h) {
+
+                                // Tag indices for clean deletion from application memory state
+                                lasersToKill[l] = true;
+                                tabsToKill[tab.id] = true;
+                                bonusPoints += 150; // Award 150 points for intercepting fast tabs
+
+                                // Trigger a high-velocity cyan code-leak debris burst at impact coordinates
+                                for (var i = 0; i < 10; i++) {
+                                    currentSparks.push({
+                                        x: laser.x,
+                                        y: laser.y,
+                                        vx: (Math.random() - 0.5) * 360,
+                                        vy: (Math.random() - 0.5) * 360,
+                                        size: Math.random() * 3 + 1,
+                                        alpha: 1.0,
+                                        decay: Math.random() * 3.0 + 2.0,
+                                        color: '#00ffff' // High-energy cyan tab deletion particle
+                                    });
+                                }
+
+                                break; // Laser consumed; stop matching this beam with other tabs
+                            }
+                        }
+                    }
+
+                    // Pure filtering vectors to safely strip destroyed objects out of reference memory
+                    var filteredLasers = nextLasers.filter(function(_, idx) { return !lasersToKill[idx]; });
+                    var filteredTabs = nextTabs.filter(function(tab) { return !tabsToKill[tab.id]; });
+
+                    return {
+                        ...state,
+                        lasers: filteredLasers,
+                        browserTabs: filteredTabs,
+                        motionSparks: currentSparks,
+                        score: typeof state.score !== 'undefined' ? state.score + bonusPoints : bonusPoints
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+<!-- --- Part 15: Browser Tab Pointer Proximity & Integrity Damage Module --- -->
+<script>
+(function() {
+    var TAB_DAMAGE_PER_FRAME_TICK = 25; // Speeding tabs drain system integrity rapidly on contact
+
+    // Hook proximity damage checks directly into the continuous logic timeline bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Safety check to verify our game environment lists, pointer, and integrity pool exist
+                    if (!state.browserTabs || !state.mouse || typeof state.health === 'undefined' || state.mode !== 'LIVE') return state;
+
+                    var mouse = state.mouse;
+                    var currentSparks = state.motionSparks || [];
+                    var accumulationOfDamage = 0;
+                    var contactEstablished = false;
+
+                    // Evaluate window workspace collision bounding indices with the mouse coordinates
+                    for (var i = 0; i < state.browserTabs.length; i++) {
+                        var tab = state.browserTabs[i];
+
+                        // Intersection Check: Is the exact cursor coordinate trapped inside the sliding tab rect?
+                        if (mouse.x >= tab.x && mouse.x <= tab.x + tab.w &&
+                            mouse.y >= tab.y && mouse.y <= tab.y + tab.h) {
+                            
+                            contactEstablished = true;
+                            accumulationOfDamage += TAB_DAMAGE_PER_FRAME_TICK * deltaTime;
+                        }
+                    }
+
+                    // Lower system health pools and trigger dynamic flare bursts if damage occurred
+                    var nextHealth = state.health;
+                    var nextMode = state.mode;
+
+                    if (contactEstablished) {
+                        nextHealth = Math.max(0, state.health - accumulationOfDamage);
+                        
+                        // Force a blue screen system crash state if integrity drains completely
+                        if (nextHealth <= 0) {
+                            nextMode = 'CRASH';
+                        }
+
+                        // Generate neon electric blue corruption shards spitting out from the tracking crosshair vector
+                        if (Math.random() < 0.4) {
+                            currentSparks.push({
+                                x: mouse.x,
+                                y: mouse.y,
+                                vx: (Math.random() - 0.5) * 220,
+                                vy: (Math.random() - 0.5) * 220,
+                                size: Math.random() * 3.5 + 1,
+                                alpha: 1.0,
+                                decay: 4.0,
+                                color: '#00aaff' // Electric damage notification spark blue
+                            });
+                        }
+                    }
+
+                    return {
+                        ...state,
+                        health: nextHealth,
+                        mode: nextMode,
+                        motionSparks: currentSparks
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+
+<script>
+(function() {
+    var VIRUS_SPAWN_RATE = 4.0; // Spawns an aggressive hunting virus node every 4 seconds
+    var VIRUS_BASE_SPEED = 90;  // Pixels per second chasing velocity base rate
+
+    // Safely structure our virus registry array inside the central system memory state
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                virusNodes: [],
+                virusSpawnTimer: 0
+            };
+        });
+    }
+
+    // Hook heat-seeking translation kinematics directly into the continuous logic frame clock loop
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (state.mode !== 'LIVE' || typeof state.virusNodes === 'undefined' || !state.mouse) return state;
+
+                    var updatedViruses = state.virusNodes.slice();
+                    var nextVirusTimer = state.virusSpawnTimer + deltaTime;
+                    var mouse = state.mouse;
+
+                    // Wave Generation Logic: Spawn viruses from randomized extreme outer perimeter frames
+                    if (nextVirusTimer >= VIRUS_SPAWN_RATE) {
+                        nextVirusTimer = 0; // Clear spawner step interval ticker
+
+                        var spawnX, spawnY;
+                        // Choose a random edge of the screen to materialize on
+                        if (Math.random() < 0.5) {
+                            spawnX = Math.random() < 0.5 ? -30 : window.innerWidth + 10;
+                            spawnY = Math.random() * window.innerHeight;
+                        } else {
+                            spawnX = Math.random() * window.innerWidth;
+                            spawnY = Math.random() < 0.5 ? -30 : window.innerHeight + 10;
+                        }
+
+                        updatedViruses.push({
+                            id: "virus_" + Date.now() + Math.random(),
+                            x: spawnX,
+                            y: spawnY,
+                            radius: 16, // Collision footprint boundary index circular radius
+                            speed: VIRUS_BASE_SPEED + (Math.random() * 25), // Slight speed variations
+                            pulseTime: 0
+                        });
+                    }
+
+                    // Chasing Physics: Recalculate target vector headings toward current mouse coordinates
+                    updatedViruses = updatedViruses.map(function(virus) {
+                        var dx = mouse.x - virus.x;
+                        var dy = mouse.y - virus.y;
+                        var distance = Math.sqrt(dx * dx + dy * dy);
+
+                        // If distance is zero, maintain current position to avoid dividing by zero errors
+                        var vx = 0;
+                        var vy = 0;
+                        if (distance > 0) {
+                            vx = (dx / distance) * virus.speed;
+                            vy = (dy / distance) * virus.speed;
+                        }
+
+                        return {
+                            ...virus,
+                            x: virus.x + vx * deltaTime,
+                            y: virus.y + vy * deltaTime,
+                            pulseTime: virus.pulseTime + (deltaTime * 4) // Controls the visual flashing warning bloom
+                        };
+                    });
+
+                    return {
+                        ...state,
+                        virusNodes: updatedViruses,
+                        virusSpawnTimer: nextVirusTimer
+                    };
+                });
+            }
+        });
+    }
+
+    // Hook virus visual layouts directly into the global graphic render bus pipeline
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState();
+            if (!state || !state.virusNodes) return;
+
+            state.virusNodes.forEach(function(virus) {
+                // 1. Draw glowing threat warning aura perimeter lines using a cosine oscillation path
+                var pulseFactor = Math.abs(Math.sin(virus.pulseTime));
+                ctx.fillStyle = "rgba(255, 0, 0, " + (0.12 + (pulseFactor * 0.12)) + ")";
+                ctx.beginPath();
+                ctx.arc(virus.x, virus.y, virus.radius + 6 + (pulseFactor * 4), 0, Math.PI * 2);
+                ctx.fill();
+
+                // 2. Paint Outer Beveled Retro Desktop Icon Base Background
+                ctx.fillStyle = "#ff2200"; // Toxic biohazard primary warning fill
+                ctx.beginPath();
+                ctx.arc(virus.x, virus.y, virus.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 3. Draw black pixel outline ring
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 4. Draw a sharp skull/biohazard geometry marker sign inside the node footprint
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px Tahoma, Arial, sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("☣️", virus.x, virus.y);
+
+                // 5. Draw traditional old-school desktop subtitle underneath the floating icon grid
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 8px monospace";
+                ctx.shadowColor = "#000000";
+                ctx.shadowBlur = 3; // Cast shadow to ensure visibility across bright backgrounds
+                ctx.fillText("VIRUS.EXE", virus.x, virus.y + virus.radius + 11);
+                ctx.shadowBlur = 0; // Restore text shadow states safely
+            });
+        });
+    }
+})();
+</script>
+
+<script>
+(function() {
+    // Hook virus laser checking operations directly into the continuous logic timeline bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Safety check to verify our active laser arrays and virus tracker lists exist
+                    if (!state.lasers || !state.virusNodes) return state;
+
+                    var nextLasers = state.lasers.slice();
+                    var nextViruses = state.virusNodes.slice();
+                    var currentSparks = state.motionSparks || [];
+                    var virusKillPoints = 0;
+
+                    var lasersToClear = {};
+                    var virusesToClear = {};
+
+                    // Matrix analysis layer: Evaluate laser tracking vectors intersecting circular boundaries
+                    for (var l = 0; l < nextLasers.length; l++) {
+                        var laser = nextLasers[l];
+
+                        for (var v = 0; v < nextViruses.length; v++) {
+                            var virus = nextViruses[v];
+
+                            // Radial Distance Checking Check: Compute coordinate delta separation
+                            var dx = laser.x - virus.x;
+                            var dy = laser.y - virus.y;
+                            var distanceSquared = dx * dx + dy * dy;
+                            var collisionRadius = virus.radius + 2; // Add a tiny precision pixel threshold bounding buffer
+
+                            // Check circle intersection: Is distance squared less than radius squared?
+                            if (distanceSquared <= collisionRadius * collisionRadius) {
+                                
+                                // Tag index mappings for clean deletion from active runtime state memory
+                                lasersToClear[l] = true;
+                                virusesToClear[virus.id] = true;
+                                virusKillPoints += 200; // Hunting nodes award a high 200 points value
+
+                                // Generate a dense explosion of neon lime biohazard text fragments at deletion coordinates
+                                for (var i = 0; i < 14; i++) {
+                                    currentSparks.push({
+                                        x: virus.x,
+                                        y: virus.y,
+                                        vx: (Math.random() - 0.5) * 280,
+                                        vy: (Math.random() - 0.5) * 280,
+                                        size: Math.random() * 3.5 + 1.5,
+                                        alpha: 1.0,
+                                        decay: Math.random() * 2.0 + 1.8,
+                                        color: '#33ff33' // Acid toxic biohazard green fragment spark
+                                    });
+                                }
+
+                                break; // Laser beam consumed; break out to evaluate remaining laser instances
+                            }
+                        }
+                    }
+
+                    // Pure structural filtering vectors to safely scrub references out of tracking states
+                    var filteredLasers = nextLasers.filter(function(_, idx) { return !lasersToClear[idx]; });
+                    var filteredViruses = nextViruses.filter(function(virus) { return !virusesToClear[virus.id]; });
+
+                    return {
+                        ...state,
+                        lasers: filteredLasers,
+                        virusNodes: filteredViruses,
+                        motionSparks: currentSparks,
+                        score: typeof state.score !== 'undefined' ? state.score + virusKillPoints : virusKillPoints
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+
+<script>
+(function() {
+    var VIRUS_DAMAGE_PER_FRAME_TICK = 45; // Rapidly drains system resources if a hunter latches on
+
+    // Hook tracker tracking logic directly into the central continuous frame loop bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Check if our enemy tracking lists, mouse positions, and vitality metrics exist
+                    if (!state.virusNodes || !state.mouse || typeof state.health === 'undefined' || state.mode !== 'LIVE') return state;
+
+                    var mouse = state.mouse;
+                    var currentSparks = state.motionSparks || [];
+                    var accumulatedInfectionDamage = 0;
+                    var contactRegistered = false;
+
+                    // Evaluate circular radial boundary overlaps relative to current pointer tip coordinates
+                    for (var i = 0; i < state.virusNodes.length; i++) {
+                        var virus = state.virusNodes[i];
+
+                        // Radial Distance-Squared Calculation
+                        var dx = mouse.x - virus.x;
+                        var dy = mouse.y - virus.y;
+                        var distanceSquared = dx * dx + dy * dy;
+                        var contactRadius = virus.radius + 1; // 1-pixel structural tracking padding buffer
+
+                        // Intersection Check: Is distance squared less than contact radius squared?
+                        if (distanceSquared <= contactRadius * contactRadius) {
+                            contactRegistered = true;
+                            accumulatedInfectionDamage += VIRUS_DAMAGE_PER_FRAME_TICK * deltaTime;
+                        }
+                    }
+
+                    // Mutate system resource pools and trigger asset decay particles if infected
+                    var nextHealth = state.health;
+                    var nextMode = state.mode;
+
+                    if (contactRegistered) {
+                        nextHealth = Math.max(0, state.health - accumulatedInfectionDamage);
+                        
+                        // Drop the system into a Blue Screen of Death crash if health drops to zero
+                        if (nextHealth <= 0) {
+                            nextMode = 'CRASH';
+                        }
+
+                        // Generate toxic, heavy lime-green biohazard digital block sparks from the crosshair vector
+                        if (Math.random() < 0.5) {
+                            currentSparks.push({
+                                x: mouse.x,
+                                y: mouse.y,
+                                vx: (Math.random() - 0.5) * 240,
+                                vy: (Math.random() - 0.5) * 240,
+                                size: Math.random() * 4 + 2,
+                                alpha: 1.0,
+                                decay: 4.5,
+                                color: '#33ff33' // Infection flash notification toxic green
+                            });
+                        }
+                    }
+
+                    return {
+                        ...state,
+                        health: nextHealth,
+                        mode: nextMode,
+                        motionSparks: currentSparks
+                    };
+                });
+            }
+        });
+    }
+})();
+</script>
+
+<script>
+(function() {
+    // Intercept mouse downward clicks to check for system recovery commands
+    window.addEventListener('mousedown', function() {
+        if (!window.getGameState || !window.setGameState) return;
+
+        var state = window.getGameState();
+        // Only trigger this pipeline if the tracking core is stuck in a terminal CRASH mode
+        if (state && state.mode === 'CRASH') {
+            
+            // Cleanly restore the initial data state and flush active threat repositories from memory
+            window.setGameState(function(currentState) {
+                return {
+                    ...currentState,
+                    mode: 'LIVE',           // Re-initialize the active OS grid loop immediately
+                    score: 0,               // Clear scoreboard panel metric values
+                    health: 100,            // Fully repair cursor integrity allocations
+                    timeElapsed: 0,         // Reset systemic uptime counter clock
+                    
+                    // Flush active tracking arrays to purge leftover entities from memory
+                    popups: [],
+                    browserTabs: [],
+                    virusNodes: [],
+                    lasers: [],
+                    cursorEchoes: [],
+                    motionSparks: [],
+                    
+                    // Reset specialized internal wave creation timing clocks
+                    spawnTimer: 0,
+                    tabSpawnTimer: 0,
+                    virusSpawnTimer: 0
+                };
+            });
+
+            // Trigger an audio frequency click tone if our Part 12 audio synthesizer context exists
+            if (window.AudioContext || window.webkitAudioContext) {
+                try {
+                    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    var osc = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(440, ctx.currentTime); // Standard retro boot chime tone
+                    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.1);
+                } catch (e) {
+                    // Fail silently if browser security rules restrict instant audio generation
+                }
+            }
+        }
+    });
+
+    // Hook a background safety cleaner function to force crash states if resources drain
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    // Global state listener checking if tracking health dropped below index metrics
+                    if (state.mode === 'LIVE' && typeof state.health !== 'undefined' && state.health <= 0) {
+                        return {
+                            ...state,
+                            mode: 'CRASH'
+                        };
+                    }
+                    return state;
+                });
+            }
+        });
+    }
+
+    // Hook a visual overlay layer to display the classic blue screen if a crash occurs
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState ? window.getGameState() : null;
+            if (!state || state.mode !== 'CRASH') return;
+
+            // Paint iconic Windows 95 blue screen canvas background color
+            ctx.fillStyle = '#0000aa'; 
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            
+            ctx.font = 'bold 32px monospace';
+            ctx.fillText('*** FATAL EXCEPTION 0E ***', width / 2, height / 2 - 80);
+            
+            ctx.font = '14px monospace';
+            ctx.fillText('A fatal code infection has compromised tracking integrity registers.', width / 2, height / 2 - 20);
+            ctx.fillText('Current Vector Address Block: 0x0028:C0011A25', width / 2, height / 2 + 10);
+            ctx.fillText('The operating cursor sub-system has been shut down to prevent damage.', width / 2, height / 2 + 40);
+            
+            ctx.fillStyle = '#ffcc00';
+            ctx.font = 'bold 15px monospace';
+            ctx.fillText('[ CLICK ANYWHERE TO INITIALIZE SYSTEM REBOOT ]', width / 2, height / 2 + 110);
+        });
+    }
+})();
+</script>
+  <script>
+(function() {
+    var AMBIENT_GRID_SPARKS = 15; // Ceiling count for background micro-glitch dust lines
+
+    // Initialize difficulty and background particle matrices inside our global state
+    if (window.setGameState) {
+        window.setGameState(function(currentState) {
+            return {
+                ...currentState,
+                difficultyModifier: 1.0,
+                ambientMatrixDust: []
+            };
+        });
+    }
+
+    // Hook game scaling math and environment debris updates into the core logic bus
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (state.mode !== 'LIVE' || typeof state.difficultyModifier === 'undefined') return state;
+
+                    // 1. Progressive Scaling: Increase intensity scaling by 3% every 10 seconds of survival
+                    var nextModifier = 1.0 + (state.timeElapsed * 0.003);
+                    // Cap max scaling limits to prevent completely breaking screen rendering frames
+                    if (nextModifier > 3.5) nextModifier = 3.5;
+
+                    // 2. Ambient background system particles translation logic
+                    var backgroundDust = state.ambientMatrixDust ? state.ambientMatrixDust.slice() : [];
+                    
+                    backgroundDust = backgroundDust.map(function(d) {
+                        return {
+                            ...d,
+                            y: d.y + d.speed * deltaTime,
+                            alpha: d.alpha + (Math.sin(state.timeElapsed * 5) * 0.05) // Ghosting glow oscillation
+                        };
+                    }).filter(function(d) {
+                        return d.y <= window.innerHeight; // Clean out shards falling off taskbar panels
+                    });
+
+                    // Replenish ambient desktop background bits if current array sizes clear down
+                    if (backgroundDust.length < AMBIENT_GRID_SPARKS && Math.random() < 0.08) {
+                        backgroundDust.push({
+                            x: Math.random() * window.innerWidth,
+                            y: -10,
+                            speed: Math.random() * 30 + 10,
+                            size: Math.random() * 1.5 + 0.5,
+                            alpha: Math.random() * 0.3 + 0.1
+                        });
+                    }
+
+                    return {
+                        ...state,
+                        difficultyModifier: nextModifier,
+                        ambientMatrixDust: backgroundDust
+                    };
+                });
+            }
+        });
+    }
+
+    // Intercept active popups, tabs, and hunting nodes matrices to apply scalar modifiers dynamically
+    var trackingAuraTime = 0;
+    if (window.engineUpdateHooks) {
+        window.engineUpdateHooks.push(function(deltaTime) {
+            trackingAuraTime += deltaTime;
+            if (window.setGameState) {
+                window.setGameState(function(state) {
+                    if (state.mode !== 'LIVE' || !state.difficultyModifier) return state;
+
+                    var scale = state.difficultyModifier;
+
+                    // Dynamically push up velocities of all active tracking elements based on current scaling modifiers
+                    var fasterPopups = (state.popups || []).map(function(p) {
+                        if (p.isScaled) return p;
+                        return { ...p, speed: p.speed * Math.sqrt(scale), isScaled: true };
+                    });
+
+                    var fasterTabs = (state.browserTabs || []).map(function(t) {
+                        if (t.isScaled) return t;
+                        return { ...t, vx: t.vx * (1.0 + (scale - 1.0) * 0.35), isScaled: true };
+                    });
+
+                    var fasterViruses = (state.virusNodes || []).map(function(v) {
+                        if (v.isScaled) return v;
+                        return { ...v, speed: v.speed * (1.0 + (scale - 1.0) * 0.5), isScaled: true };
+                    });
+
+                    return {
+                        ...state,
+                        popups: fasterPopups,
+                        browserTabs: fasterTabs,
+                        virusNodes: fasterViruses
+                    };
+                });
+            }
+        });
+    }
+
+    // Hook background ambient particle painters onto the shared central rendering loop
+    if (window.engineRenderHooks) {
+        window.engineRenderHooks.push(function(ctx, width, height) {
+            var state = window.getGameState ? window.getGameState() : null;
+            if (!state || state.mode !== 'LIVE' || !state.ambientMatrixDust) return;
+
+            // Draw extremely subtle scrolling system code leaks down the canvas grid paths
+            state.ambientMatrixDust.forEach(function(dust) {
+                ctx.fillStyle = '#ffffff';
+                ctx.globalAlpha = Math.max(0.02, Math.min(0.4, dust.alpha));
+                ctx.fillRect(dust.x, dust.y, dust.size, dust.size * 5); // Draw small trailing digital matrix bar drops
+            });
+            ctx.globalAlpha = 1.0; // Cleanly restore visual rendering context alpha channels
+
+            // Draw a subtle difficulty notice string overlay right next to our taskbar timer
+            if (state.difficultyModifier > 1.05) {
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
+                ctx.font = 'bold 9px monospace';
+                ctx.textAlign = 'right';
+                var threatPercent = Math.round((state.difficultyModifier - 1.0) * 100);
+                ctx.fillText("CPU_LOAD_THREAT: +" + threatPercent + "%", width - 15, height - 52);
+            }
+        });
+    }
+})();
+</script>
+
+
